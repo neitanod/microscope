@@ -1,0 +1,253 @@
+<html>
+    <head>
+       <link rel="shortcut icon" type="image/png" href="microscope microscopio.png"/>
+    </head>
+<body>
+    <style>
+    video.mirror {
+        -webkit-transform: scaleX(-1);
+        transform: scaleX(-1);
+    }
+    video.flip {
+        -webkit-transform: scaleY(-1);
+        transform: scaleY(-1);
+    }
+    video.mirror.flip {
+        -webkit-transform: scaleX(-1) scaleY(-1);
+        transform: scaleX(-1) scaleY(-1);
+    }
+    </style>
+    <div style="width: 80%; margin: 0 auto;">
+    <div id="controls" style=" width: 80%; margin: 0 auto; padding-bottom: 8px; ">
+    <div class="select">
+        <label for="videoSource">Video source: </label><select id="videoSource"></select>
+        Mirror: <input id="mirror" type="checkbox" value="mirror" onchange="if(this.checked){ videoElement.classList.add('mirror'); } else { videoElement.classList.remove('mirror'); }">
+        Flip:   <input id="flip" type="checkbox" value="flip" onchange="if(this.checked){ videoElement.classList.add('flip'); } else { videoElement.classList.remove('flip'); }">
+        <input type="text" value="Recorded video" id="filename">
+        <button id="startButton" class="button">
+            Record
+        </button>
+        <button id="stopButton" class="button">
+            Stop recording
+        </button>
+        <button id="stopButton" class="button" onclick="takepicture();">
+            Take picture
+        </button>
+    </div>
+  </div>
+  <div id="video_container" style="width: 80%; margin: 0 auto;">
+      <video id="video" autoplay controls style="width: 100%"></video>
+      <canvas id="picture" style="width: 100%; display: none;"></canvas>
+      <!-- video id="preview" autoplay controls style="width: 49%"></video -->
+  </div>
+  <div id="recordings">
+  </div>
+  <script>
+
+'use strict';
+
+const videoElement = document.querySelector('video#video');
+const canvasElement = document.querySelector('canvas#picture');
+//const previewElement = document.querySelector('video#preview');
+//const audioInputSelect = document.querySelector('select#audioSource');
+//const audioOutputSelect = document.querySelector('select#audioOutput');
+const videoSelect = document.querySelector('select#videoSource');
+//const selectors = [audioInputSelect, audioOutputSelect, videoSelect];
+const selectors = [videoSelect];
+const startButton = document.getElementById("startButton");
+const stopButton = document.getElementById("stopButton");
+const recordings = document.getElementById("recordings");
+
+let recordingTimeMS = 600000;
+//audioOutputSelect.disabled = !('sinkId' in HTMLMediaElement.prototype);
+
+function addRecording(recordedBlob){
+    if(!window.generated) window.generated = 0;
+    window.generated++;
+    var newentry = document.createElement("div");
+    var newvideo = document.createElement("video");
+    var newlink  = document.createElement("a");
+    newvideo.src = newlink.href = URL.createObjectURL(recordedBlob);
+    newvideo.style.width = "90%";
+    newlink.download = document.getElementById("filename").value + " " + window.generated +".webm";
+    newlink.appendChild(newvideo);
+    newentry.style.float = "left";
+    newentry.style.width = "25%";
+    newentry.appendChild(newlink);
+    recordings.appendChild(newentry);
+
+}
+
+function gotDevices(deviceInfos) {
+  // Handles being called several times to update labels. Preserve values.
+  const values = selectors.map(select => select.value);
+  selectors.forEach(select => {
+    while (select.firstChild) {
+      select.removeChild(select.firstChild);
+    }
+  });
+  for (let i = 0; i !== deviceInfos.length; ++i) {
+    const deviceInfo = deviceInfos[i];
+    const option = document.createElement('option');
+    option.value = deviceInfo.deviceId;
+    if (deviceInfo.kind === 'audioinput') {
+      // option.text = deviceInfo.label || `microphone ${audioInputSelect.length + 1}`;
+      // audioInputSelect.appendChild(option);
+    } else if (deviceInfo.kind === 'audiooutput') {
+      // option.text = deviceInfo.label || `speaker ${audioOutputSelect.length + 1}`;
+      // audioOutputSelect.appendChild(option);
+    } else if (deviceInfo.kind === 'videoinput') {
+      option.text = deviceInfo.label || `camera ${videoSelect.length + 1}`;
+      videoSelect.appendChild(option);
+    } else {
+      console.log('Some other kind of source/device: ', deviceInfo);
+    }
+  }
+  selectors.forEach((select, selectorIndex) => {
+    if (Array.prototype.slice.call(select.childNodes).some(n => n.value === values[selectorIndex])) {
+      select.value = values[selectorIndex];
+    }
+  });
+}
+
+navigator.mediaDevices.enumerateDevices().then(gotDevices).catch(handleError);
+
+// Attach audio output device to video element using device/sink ID.
+function attachSinkId(element, sinkId) {
+  if (typeof element.sinkId !== 'undefined') {
+    element.setSinkId(sinkId)
+      .then(() => {
+        console.log(`Success, audio output device attached: ${sinkId}`);
+      })
+      .catch(error => {
+        let errorMessage = error;
+        if (error.name === 'SecurityError') {
+          errorMessage = `You need to use HTTPS for selecting audio output device: ${error}`;
+        }
+        console.error(errorMessage);
+        // Jump back to first output device in the list as it's the default.
+        // audioOutputSelect.selectedIndex = 0;
+      });
+  } else {
+    console.warn('Browser does not support output device selection.');
+  }
+}
+
+function changeAudioDestination() {
+  // const audioDestination = audioOutputSelect.value;
+  // attachSinkId(videoElement, audioDestination);
+}
+
+function gotStream(stream) {
+  window.stream = stream; // make stream available to console
+  videoElement.srcObject = stream;
+  // Refresh button list in case labels have become available
+  return navigator.mediaDevices.enumerateDevices();
+}
+
+function handleError(error) {
+  console.log('navigator.getUserMedia error: ', error);
+}
+
+function start() {
+  if (window.stream) {
+    window.stream.getTracks().forEach(track => {
+      track.stop();
+    });
+  }
+  // const audioSource = audioInputSelect.value;
+  const videoSource = videoSelect.value;
+  const constraints = {
+    // audio: {deviceId: audioSource ? {exact: audioSource} : undefined},
+    video: {deviceId: videoSource ? {exact: videoSource} : undefined}
+  };
+  navigator.mediaDevices.getUserMedia(constraints).then(gotStream).then(gotDevices).catch(handleError);
+}
+
+// audioInputSelect.onchange = start;
+// audioOutputSelect.onchange = changeAudioDestination;
+
+videoSelect.onchange = start;
+
+start();
+
+
+function wait(delayInMS) {
+  return new Promise(resolve => setTimeout(resolve, delayInMS));
+}
+
+function startRecording(stream, lengthInMS) {
+  let recorder = window.recorder = new MediaRecorder(stream);
+  let data = [];
+
+  recorder.ondataavailable = event => data.push(event.data);
+  recorder.start();
+
+  let stopped = new Promise((resolve, reject) => {
+    recorder.onstop = resolve;
+    recorder.onerror = event => reject(event.name);
+  }).then(
+      () => {
+          console.log("Recording completed");
+          let recordedBlob = new Blob(data, { type: "video/webm" });
+          startButton.disabled = false;
+          addRecording(recordedBlob);
+      }
+      );
+
+  let recorded = wait(lengthInMS).then(
+    () => recorder.state == "recording" && recorder.stop()
+  );
+
+  return Promise.all([
+    stopped,
+    recorded
+  ])
+      .then(() => { console.log("stopped"); return data; });
+}
+
+startButton.addEventListener("click", function() {
+  startButton.disabled = true;
+  startRecording(window.stream, recordingTimeMS);
+}, false);
+
+// function stop(stream) {
+//   stream.getTracks().forEach(track => track.stop());
+// }
+
+stopButton.addEventListener("click", function() {
+  window.recorder.stop();
+
+  //stop(preview.srcObject);
+  //console.log("stopped",preview.srcObject);
+}, false);
+
+function takepicture() {
+    // videoElement.style.display = "none";
+    canvasElement.style.display = "block";
+    let w = videoElement.videoWidth;
+    let h = videoElement.videoHeight;
+    canvasElement.width = w;
+    canvasElement.height = h;
+    canvasElement.getContext('2d').drawImage(video, 0, 0, w, h);
+    var data = canvasElement.toDataURL('image/png');
+    canvasElement.style.display = "none";
+    if(!window.generated) window.generated = 0;
+    window.generated++;
+    var newentry = document.createElement("div");
+    var newimage = document.createElement("img");
+    var newlink  = document.createElement("a");
+    newimage.src = newlink.href = data; //URL.createObjectURL(data);
+    newimage.style.width = "90%";
+    newlink.download = document.getElementById("filename").value + " " + window.generated +".png";
+    newlink.appendChild(newimage);
+    newentry.style.float = "left";
+    newentry.style.width = "25%";
+    newentry.appendChild(newlink);
+    recordings.appendChild(newentry);
+}
+
+  </script>
+</div>
+</body>
+</html>
